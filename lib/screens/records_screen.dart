@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
 import '../models/call_record.dart';
+import '../models/sms_record.dart';
 import 'record_detail_screen.dart';
+import 'sms_detail_screen.dart';
 
 class RecordsScreen extends StatefulWidget {
   const RecordsScreen({super.key});
@@ -14,8 +16,8 @@ class RecordsScreen extends StatefulWidget {
 class _RecordsScreenState extends State<RecordsScreen> {
   final DatabaseHelper _db = DatabaseHelper.instance;
 
-  List<CallRecord> _allRecords = [];
-  List<CallRecord> _filteredRecords = [];
+  List<dynamic> _allRecords = []; // CallRecord와 SmsRecord 모두 포함
+  List<dynamic> _filteredRecords = [];
   String _currentFilter = 'all'; // 'all', 'danger', 'safe'
   bool _isLoading = true;
 
@@ -25,14 +27,21 @@ class _RecordsScreenState extends State<RecordsScreen> {
     _loadRecords();
   }
 
-  // 기록 로드
+  // 기록 로드 (통화 + SMS 통합)
   Future<void> _loadRecords() async {
     setState(() => _isLoading = true);
 
     try {
-      final records = await _db.getAllCallRecords();
+      // 통화 기록과 SMS 기록 모두 가져오기
+      final callRecords = await _db.getAllCallRecords();
+      final smsRecords = await _db.getAllSmsRecords();
+
+      // 통합하여 시간순으로 정렬
+      final allRecords = <dynamic>[...callRecords, ...smsRecords];
+      allRecords.sort((a, b) => b.analyzedAt.compareTo(a.analyzedAt));
+
       setState(() {
-        _allRecords = records;
+        _allRecords = allRecords;
         _applyFilter();
         _isLoading = false;
       });
@@ -46,10 +55,18 @@ class _RecordsScreenState extends State<RecordsScreen> {
   void _applyFilter() {
     switch (_currentFilter) {
       case 'danger':
-        _filteredRecords = _allRecords.where((r) => r.isPhishing).toList();
+        _filteredRecords = _allRecords.where((r) {
+          if (r is CallRecord) return r.isPhishing;
+          if (r is SmsRecord) return r.isPhishing;
+          return false;
+        }).toList();
         break;
       case 'safe':
-        _filteredRecords = _allRecords.where((r) => !r.isPhishing).toList();
+        _filteredRecords = _allRecords.where((r) {
+          if (r is CallRecord) return !r.isPhishing;
+          if (r is SmsRecord) return !r.isPhishing;
+          return false;
+        }).toList();
         break;
       case 'all':
       default:
@@ -84,7 +101,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('통화 분석 기록'),
+        title: const Text('분석 기록'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -218,15 +235,15 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
     switch (_currentFilter) {
       case 'danger':
-        message = '위험으로 분류된 통화가 없습니다.\n안전하게 통화하고 계시네요! 👍';
+        message = '위험으로 분류된 기록이 없습니다.\n안전하게 이용하고 계시네요! 👍';
         icon = Icons.shield_outlined;
         break;
       case 'safe':
-        message = '안전한 통화 기록이 없습니다.';
+        message = '안전한 기록이 없습니다.';
         icon = Icons.phone_disabled;
         break;
       default:
-        message = '아직 분석된 통화가 없습니다.\n녹음 파일이 생성되면 자동으로 분석됩니다.';
+        message = '아직 분석된 기록이 없습니다.\n통화 녹음 파일이나 SMS 파일이 생성되면\n자동으로 분석됩니다.';
         icon = Icons.phone_missed;
         break;
     }
@@ -253,8 +270,18 @@ class _RecordsScreenState extends State<RecordsScreen> {
     );
   }
 
-  // 기록 카드
-  Widget _buildRecordCard(CallRecord record) {
+  // 기록 카드 (통합)
+  Widget _buildRecordCard(dynamic record) {
+    if (record is CallRecord) {
+      return _buildCallRecordCard(record);
+    } else if (record is SmsRecord) {
+      return _buildSmsRecordCard(record);
+    }
+    return const SizedBox.shrink();
+  }
+
+  // 통화 기록 카드
+  Widget _buildCallRecordCard(CallRecord record) {
     final dateFormat = DateFormat('yyyy년 MM월 dd일');
     final timeFormat = DateFormat('HH:mm:ss');
     final isPhishing = record.isPhishing;
@@ -289,6 +316,22 @@ class _RecordsScreenState extends State<RecordsScreen> {
         ),
         title: Row(
           children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade100,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '통화',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.orange.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 record.phoneNumber,
@@ -388,6 +431,166 @@ class _RecordsScreenState extends State<RecordsScreen> {
             context,
             MaterialPageRoute(
               builder: (context) => RecordDetailScreen(record: record),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // SMS 기록 카드
+  Widget _buildSmsRecordCard(SmsRecord record) {
+    final dateFormat = DateFormat('yyyy년 MM월 dd일');
+    final timeFormat = DateFormat('HH:mm:ss');
+    final isPhishing = record.isPhishing;
+
+    // 상태에 따른 색상
+    final cardColor = isPhishing ? Colors.red.shade50 : Colors.green.shade50;
+    final borderColor = isPhishing ? Colors.red.shade300 : Colors.green.shade300;
+    final iconColor = isPhishing ? Colors.red.shade700 : Colors.green.shade700;
+    final statusIcon = isPhishing ? Icons.warning_amber_rounded : Icons.check_circle_outline;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 1.5),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: borderColor, width: 2),
+          ),
+          child: Icon(
+            statusIcon,
+            color: iconColor,
+            size: 28,
+          ),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.purple.shade100,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'SMS',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.purple.shade700,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                record.phoneNumber,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            if (isPhishing)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade700,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  '위험',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Text(
+                  dateFormat.format(record.analyzedAt),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Icon(Icons.access_time, size: 14, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Text(
+                  timeFormat.format(record.analyzedAt),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.message, size: 14, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    record.messageContent.length > 30
+                        ? '${record.messageContent.substring(0, 30)}...'
+                        : record.messageContent,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            if (isPhishing) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.error_outline, size: 14, color: Colors.red.shade700),
+                  const SizedBox(width: 4),
+                  Text(
+                    '위험 키워드 ${record.keywordCount}개 발견',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.red.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: Colors.grey.shade400,
+        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SmsDetailScreen(record: record),
             ),
           );
         },

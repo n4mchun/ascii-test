@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
 import '../models/call_record.dart';
+import '../models/sms_record.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,8 +14,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final DatabaseHelper _db = DatabaseHelper.instance;
 
-  Map<String, int> _statistics = {'total': 0, 'phishing': 0, 'safe': 0};
+  Map<String, int> _callStats = {'total': 0, 'phishing': 0, 'safe': 0};
+  Map<String, int> _smsStats = {'total': 0, 'phishing': 0, 'safe': 0};
   List<CallRecord> _recentPhishingCalls = [];
+  List<SmsRecord> _recentPhishingSms = [];
   DateTime? _lastAnalyzedTime;
   bool _isLoading = true;
 
@@ -29,13 +32,22 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final stats = await _db.getStatistics();
+      // 통화 통계 및 기록
+      final callStats = await _db.getStatistics();
       final recentCalls = await _db.getRecentPhishingCalls(limit: 3);
+
+      // SMS 통계 및 기록
+      final smsStats = await _db.getSmsStatistics();
+      final recentSms = await _db.getRecentPhishingSms(limit: 3);
+
+      // 마지막 분석 시간 (통화 기준)
       final lastTime = await _db.getLastAnalyzedTime();
 
       setState(() {
-        _statistics = stats;
+        _callStats = callStats;
+        _smsStats = smsStats;
         _recentPhishingCalls = recentCalls;
+        _recentPhishingSms = recentSms;
         _lastAnalyzedTime = lastTime;
         _isLoading = false;
       });
@@ -50,8 +62,8 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadDashboardData();
   }
 
-  // 안전 상태 판단
-  bool get _isSafe => _recentPhishingCalls.isEmpty;
+  // 안전 상태 판단 (통화 + SMS 모두 고려)
+  bool get _isSafe => _recentPhishingCalls.isEmpty && _recentPhishingSms.isEmpty;
 
   // 마지막 분석 시간 포맷
   String get _formattedLastTime {
@@ -104,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 24),
 
                     // 최근 위험 감지 (있는 경우만)
-                    if (_recentPhishingCalls.isNotEmpty) ...[
+                    if (_recentPhishingCalls.isNotEmpty || _recentPhishingSms.isNotEmpty) ...[
                       _buildRecentPhishingSection(),
                       const SizedBox(height: 24),
                     ],
@@ -152,8 +164,8 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           Text(
             isSafe
-                ? '최근 보이스피싱 의심 통화가 없습니다'
-                : '보이스피싱 의심 통화가 감지되었습니다',
+                ? '최근 보이스피싱 의심 기록이 없습니다'
+                : '보이스피싱 의심 기록이 감지되었습니다',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey.shade700,
@@ -182,23 +194,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 통계 섹션
   Widget _buildStatisticsSection() {
+    final totalCalls = _callStats['total']!;
+    final totalSms = _smsStats['total']!;
+    final totalPhishing = _callStats['phishing']! + _smsStats['phishing']!;
+    final totalSafe = _callStats['safe']! + _smsStats['safe']!;
+    final totalAll = totalCalls + totalSms;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '📊 분석 통계',
+          '📊 통합 분석 통계',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 12),
+
+        // 전체 통계
         Row(
           children: [
             Expanded(
               child: _buildStatCard(
                 '총 분석',
-                _statistics['total']!,
+                totalAll,
                 Colors.blue,
                 Icons.analytics,
               ),
@@ -207,7 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: _buildStatCard(
                 '위험 감지',
-                _statistics['phishing']!,
+                totalPhishing,
                 Colors.red,
                 Icons.warning,
               ),
@@ -216,14 +236,80 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: _buildStatCard(
                 '안전',
-                _statistics['safe']!,
+                totalSafe,
                 Colors.green,
                 Icons.check_circle,
               ),
             ),
           ],
         ),
+
+        const SizedBox(height: 16),
+
+        // 상세 통계
+        Row(
+          children: [
+            Expanded(
+              child: _buildDetailStatCard(
+                '📞 통화',
+                totalCalls,
+                _callStats['phishing']!,
+                Colors.orange,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildDetailStatCard(
+                '💬 SMS',
+                totalSms,
+                _smsStats['phishing']!,
+                Colors.purple,
+              ),
+            ),
+          ],
+        ),
       ],
+    );
+  }
+
+  // 상세 통계 카드
+  Widget _buildDetailStatCard(String label, int total, int phishing, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '총 $total건',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '위험 $phishing건',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.red.shade600,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -263,6 +349,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 최근 위험 감지 섹션
   Widget _buildRecentPhishingSection() {
+    // 통화와 SMS를 시간순으로 정렬하여 최대 5개까지 표시
+    final allRecords = <dynamic>[
+      ..._recentPhishingCalls,
+      ..._recentPhishingSms,
+    ]..sort((a, b) => b.analyzedAt.compareTo(a.analyzedAt));
+
+    final displayRecords = allRecords.take(5).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -274,7 +368,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        ..._recentPhishingCalls.map((record) => _buildPhishingCallCard(record)),
+        ...displayRecords.map((record) {
+          if (record is CallRecord) {
+            return _buildPhishingCallCard(record);
+          } else if (record is SmsRecord) {
+            return _buildPhishingSmsCard(record);
+          }
+          return const SizedBox.shrink();
+        }),
       ],
     );
   }
@@ -299,12 +400,34 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  record.phoneNumber,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '통화',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.orange.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        record.phoneNumber,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -322,6 +445,93 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Colors.red.shade700,
                     fontWeight: FontWeight.w600,
                   ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: Colors.grey.shade400),
+        ],
+      ),
+    );
+  }
+
+  // 위험 SMS 카드
+  Widget _buildPhishingSmsCard(SmsRecord record) {
+    final dateFormat = DateFormat('yyyy-MM-dd HH:mm');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.message, color: Colors.red.shade700, size: 32),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'SMS',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.purple.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        record.phoneNumber,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  dateFormat.format(record.analyzedAt),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '키워드 ${record.keywordCount}개 발견',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.red.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  record.messageContent.length > 50
+                      ? '${record.messageContent.substring(0, 50)}...'
+                      : record.messageContent,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade700,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),

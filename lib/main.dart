@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'screens/records_screen.dart';
+import 'services/notification_service.dart';
 import 'services/file_monitoring_service.dart';
 import 'database/database_helper.dart';
 
@@ -45,27 +46,34 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   @override
   void initState() {
     super.initState();
-    // 파일 모니터링 서비스 초기화
-    _initFileMonitoring();
+    // 서비스 초기화
+    _initServices();
   }
 
-  // 파일 모니터링 서비스 시작
-  Future<void> _initFileMonitoring() async {
-    await FileMonitoringService.instance.initialize(
-      onPhishingDetectedCallback: (transcriptionText) {
+  // 알림 및 파일 모니터링 서비스 시작
+  Future<void> _initServices() async {
+    // 알림 서비스 초기화
+    await NotificationService.instance.initialize(
+      onNotificationTap: (payload) {
         // 보이스피싱 알림 클릭 시 대처 방법 페이지로 이동
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PhishingResponseGuidePage(
-                transcriptionText: transcriptionText,
+        if (payload.startsWith('phishing_detected:')) {
+          final transcriptionText = payload.replaceFirst('phishing_detected:', '');
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PhishingResponseGuidePage(
+                  transcriptionText: transcriptionText,
+                ),
               ),
-            ),
-          );
+            );
+          }
         }
       },
     );
+
+    // 통합 파일 모니터링 서비스 시작 (오디오 + SMS)
+    await FileMonitoringService.instance.initialize();
   }
 
   @override
@@ -150,6 +158,7 @@ class _SettingsPlaceholderPageState extends State<SettingsPlaceholderPage> {
     if (confirmed == true && mounted) {
       try {
         await DatabaseHelper.instance.deleteAllCallRecords();
+        await DatabaseHelper.instance.deleteAllSmsRecords();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

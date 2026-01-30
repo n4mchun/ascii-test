@@ -6,16 +6,15 @@ import 'package:permission_handler/permission_handler.dart';
 import '../config.dart';
 import '../database/database_helper.dart';
 import '../models/call_record.dart';
-import '../models/sms_record.dart';
 import 'phishing_detection_service.dart';
 import 'notification_service.dart';
 
-/// 통합 파일 모니터링 서비스
-/// Download 폴더의 오디오 및 텍스트 파일을 감시하고 자동으로 분석합니다.
-class FileMonitoringService {
-  static final FileMonitoringService instance = FileMonitoringService._init();
+/// 오디오 파일 모니터링 서비스
+/// Download 폴더의 오디오 파일을 감시하고 자동으로 분석합니다.
+class AudioMonitoringService {
+  static final AudioMonitoringService instance = AudioMonitoringService._init();
 
-  FileMonitoringService._init();
+  AudioMonitoringService._init();
 
   final String _targetPath = '/storage/emulated/0/Download';
   final String _apiKey = ApiConfig.openaiApiKey;
@@ -42,7 +41,7 @@ class FileMonitoringService {
 
     if (storageGranted) {
       _startWatching();
-      print('✓ 파일 모니터링 서비스 시작됨');
+      print('✓ 오디오 파일 모니터링 서비스 시작됨');
     } else {
       print('✗ 파일 접근 권한이 거부되었습니다.');
     }
@@ -56,9 +55,9 @@ class FileMonitoringService {
       return;
     }
 
-    // 11자리 전화번호 + 지원하는 확장자 (오디오 및 텍스트)
+    // 11자리 전화번호 + 지원하는 오디오/비디오 확장자
     final targetPattern = RegExp(
-      r'^\d{11}\.(mp3|mp4|mpeg|mpga|m4a|wav|webm|txt)$',
+      r'^\d{11}\.(mp3|mp4|mpeg|mpga|m4a|wav|webm)$',
       caseSensitive: false,
     );
 
@@ -67,103 +66,29 @@ class FileMonitoringService {
         final fileName = event.path.split('/').last;
 
         if (targetPattern.hasMatch(fileName)) {
-          print('★ 파일 감지됨: $fileName');
+          print('★ 오디오 파일 감지됨: $fileName');
 
+          // 파일 감지 알림
+          await _notifications.showFileDetectedNotification(
+            fileName: fileName,
+            fileType: 'audio',
+          );
+
+          // Whisper API 호출 및 분석
           final file = File(event.path);
-          final extension = fileName.split('.').last.toLowerCase();
-
-          // 확장자에 따라 분류 처리
-          if (extension == 'txt') {
-            // SMS 텍스트 파일 처리
-            await _processSmsFile(file, fileName);
-          } else {
-            // 오디오 파일 처리
-            await _processAudioFile(file, fileName);
-          }
+          await _transcribeAndAnalyze(file);
         }
       }
     });
   }
 
-  /// SMS 텍스트 파일 처리
-  Future<void> _processSmsFile(File smsFile, String fileName) async {
-    final phoneNumber = fileName.split('.').first;
-
-    try {
-      // 파일 감지 알림
-      await _notifications.showFileDetectedNotification(
-        fileName: fileName,
-        fileType: 'sms',
-      );
-
-      // 파일이 완전히 기록될 때까지 짧은 대기
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // 파일 내용 읽기
-      final messageContent = await smsFile.readAsString();
-
-      if (messageContent.isEmpty) {
-        print('파일 내용이 비어있습니다: $fileName');
-        await _notifications.showErrorNotification(
-          message: 'SMS 파일이 비어있습니다',
-        );
-        return;
-      }
-
-      print('SMS 내용 읽기 완료: ${messageContent.substring(0, messageContent.length > 50 ? 50 : messageContent.length)}...');
-
-      // 보이스피싱 분석
-      final analysis = _phishingDetector.analyzeText(messageContent);
-      final keywordCount = analysis['keywordCount'] as int;
-      final isPhishing = analysis['isPhishing'] as bool;
-
-      // 데이터베이스에 저장
-      final record = SmsRecord(
-        phoneNumber: phoneNumber,
-        fileName: fileName,
-        filePath: smsFile.path,
-        analyzedAt: DateTime.now(),
-        messageContent: messageContent,
-        riskLevel: isPhishing ? 'danger' : 'safe',
-        keywordCount: keywordCount,
-        isPhishing: isPhishing,
-      );
-
-      await DatabaseHelper.instance.createSmsRecord(record);
-      print('SMS 데이터베이스에 저장 완료');
-
-      // 결과 알림
-      if (isPhishing) {
-        print('⚠️ 보이스피싱 의심 SMS! 키워드 $keywordCount개 발견');
-        await _notifications.showPhishingWarningNotification(
-          content: messageContent,
-          type: 'sms',
-        );
-      } else {
-        await _notifications.showAnalysisCompleteNotification(
-          content: '안전한 메시지로 분석되었습니다.',
-        );
-      }
-    } catch (e) {
-      print('SMS 분석 오류 발생: $e');
-      await _notifications.showErrorNotification(
-        message: 'SMS 분석 중 오류 발생',
-      );
-    }
-  }
-
-  /// 오디오 파일 처리 (Whisper API)
-  Future<void> _processAudioFile(File audioFile, String fileName) async {
-    final phoneNumber = fileName.split('.').first;
+  /// Whisper API 호출 및 보이스피싱 분석
+  Future<void> _transcribeAndAnalyze(File audioFile) async {
     final url = Uri.parse('https://api.openai.com/v1/audio/transcriptions');
+    final fileName = audioFile.path.split('/').last;
+    final phoneNumber = fileName.split('.').first;
 
     try {
-      // 파일 감지 알림
-      await _notifications.showFileDetectedNotification(
-        fileName: fileName,
-        fileType: 'audio',
-      );
-
       final request = http.MultipartRequest('POST', url)
         ..headers['Authorization'] = 'Bearer $_apiKey'
         ..fields['model'] = 'whisper-1'
@@ -198,7 +123,7 @@ class FileMonitoringService {
         );
 
         await DatabaseHelper.instance.createCallRecord(record);
-        print('통화 데이터베이스에 저장 완료');
+        print('데이터베이스에 저장 완료');
 
         // 결과 알림
         if (isPhishing) {
@@ -219,7 +144,7 @@ class FileMonitoringService {
         );
       }
     } catch (e) {
-      print('오디오 분석 오류 발생: $e');
+      print('오류 발생: $e');
       await _notifications.showErrorNotification(
         message: '처리 중 오류 발생',
       );
@@ -229,6 +154,6 @@ class FileMonitoringService {
   /// 서비스 종료
   void dispose() {
     _dirWatcher?.cancel();
-    print('✓ 파일 모니터링 서비스 종료됨');
+    print('✓ 오디오 파일 모니터링 서비스 종료됨');
   }
 }
