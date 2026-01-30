@@ -6,6 +6,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 알림 패키지
 import 'config.dart'; // API 키 설정 파일
+import 'screens/home_screen.dart'; // 홈 대시보드
+import 'screens/records_screen.dart'; // 기록 화면
+import 'database/database_helper.dart'; // 데이터베이스
+import 'models/call_record.dart'; // 통화 기록 모델
 
 void main() {
   runApp(const MyApp());
@@ -17,12 +21,80 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'File Watcher & Notifier',
+      title: '보이스피싱 감지',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const FileListPage(),
+      home: const MainNavigationPage(),
+    );
+  }
+}
+
+// 메인 네비게이션 페이지 (하단 탭 바)
+class MainNavigationPage extends StatefulWidget {
+  const MainNavigationPage({super.key});
+
+  @override
+  State<MainNavigationPage> createState() => _MainNavigationPageState();
+}
+
+class _MainNavigationPageState extends State<MainNavigationPage> {
+  int _selectedIndex = 0;
+
+  // 페이지 목록
+  final List<Widget> _pages = [
+    const HomeScreen(), // 홈 대시보드
+    const RecordsScreen(), // 기록 (통화 분석 기록)
+    const SettingsPlaceholderPage(), // 설정 (임시)
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _pages[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: '홈',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history),
+            label: '기록',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: '설정',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+      ),
+    );
+  }
+}
+
+// 임시 설정 페이지
+class SettingsPlaceholderPage extends StatelessWidget {
+  const SettingsPlaceholderPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('설정'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: const Center(
+        child: Text('설정 페이지 (준비 중)'),
+      ),
     );
   }
 }
@@ -291,6 +363,8 @@ class _FileListPageState extends State<FileListPage> {
   // 9. OpenAI Whisper API 호출 및 보이스피싱 분석
   Future<void> _transcribeAudio(File audioFile) async {
     final url = Uri.parse('https://api.openai.com/v1/audio/transcriptions');
+    final fileName = audioFile.path.split('/').last;
+    final phoneNumber = fileName.split('.').first; // 파일명에서 전화번호 추출
 
     try {
       final request = http.MultipartRequest('POST', url)
@@ -311,8 +385,24 @@ class _FileListPageState extends State<FileListPage> {
 
         // 보이스피싱 키워드 분석
         int phishingKeywordCount = _detectPhishingKeywords(text);
+        bool isPhishing = phishingKeywordCount >= _phishingThreshold;
 
-        if (phishingKeywordCount >= _phishingThreshold) {
+        // 데이터베이스에 저장
+        final record = CallRecord(
+          phoneNumber: phoneNumber,
+          fileName: fileName,
+          filePath: audioFile.path,
+          analyzedAt: DateTime.now(),
+          transcriptionText: text,
+          riskLevel: isPhishing ? 'danger' : 'safe',
+          keywordCount: phishingKeywordCount,
+          isPhishing: isPhishing,
+        );
+
+        await DatabaseHelper.instance.createCallRecord(record);
+        print('데이터베이스에 저장 완료');
+
+        if (isPhishing) {
           // 보이스피싱 의심! 경고 알림 표시
           print('⚠️ 보이스피싱 의심! 키워드 $phishingKeywordCount개 발견');
           await _showPhishingWarningNotification(text);
