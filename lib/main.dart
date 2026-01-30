@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'screens/records_screen.dart';
 import 'services/file_monitoring_service.dart';
+import 'database/database_helper.dart';
 
 void main() {
   runApp(const MyApp());
@@ -106,8 +107,74 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
 }
 
 // 임시 설정 페이지
-class SettingsPlaceholderPage extends StatelessWidget {
+class SettingsPlaceholderPage extends StatefulWidget {
   const SettingsPlaceholderPage({super.key});
+
+  @override
+  State<SettingsPlaceholderPage> createState() => _SettingsPlaceholderPageState();
+}
+
+class _SettingsPlaceholderPageState extends State<SettingsPlaceholderPage> {
+  int _tapCount = 0;
+  bool _showDeleteButton = false;
+
+  void _handleTitleTap() {
+    setState(() {
+      _tapCount++;
+      if (_tapCount >= 7) {
+        _showDeleteButton = true;
+      }
+    });
+  }
+
+  Future<void> _deleteAllData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ 경고'),
+        content: const Text('모든 분석 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await DatabaseHelper.instance.deleteAllCallRecords();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('모든 기록이 삭제되었습니다'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          setState(() {
+            _tapCount = 0;
+            _showDeleteButton = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('삭제 중 오류 발생: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,8 +183,32 @@ class SettingsPlaceholderPage extends StatelessWidget {
         title: const Text('설정'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: const Center(
-        child: Text('설정 페이지 (준비 중)'),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            GestureDetector(
+              onTap: _handleTitleTap,
+              child: const Text('설정 페이지 (준비 중)'),
+            ),
+            if (_showDeleteButton) ...[
+              const SizedBox(height: 40),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: ElevatedButton.icon(
+                  onPressed: _deleteAllData,
+                  icon: const Icon(Icons.delete_forever),
+                  label: const Text('모든 데이터 삭제'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 50),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
