@@ -171,8 +171,8 @@ class PhishingResponseGuidePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          '방금 전 통화에서 의심스러운 키워드가 발견되었습니다.',
-                          style: TextStyle(fontSize: 14),
+                          '신속한 대처가 피해를 최소화합니다!',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -182,33 +182,45 @@ class PhishingResponseGuidePage extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // 즉시 조치 사항
-            _buildSectionTitle('⚡ 즉시 취해야 할 조치'),
+            // 황금시간 - 즉시 신고
+            _buildSectionTitle('🚨 황금시간 - 즉시 신고하세요!'),
             _buildActionCard(
               '1',
-              '송금/이체를 중단하세요',
-              '아직 송금하지 않았다면 절대 송금하지 마세요. 이미 송금했다면 즉시 은행에 연락하세요.',
+              '경찰청 전기통신금융사기 신고',
+              '경찰청 통합신고대응센터 112번으로 즉시 신고하세요. 빠른 신고가 피해 회복의 핵심입니다.',
               Colors.red,
             ),
             _buildActionCard(
               '2',
-              '112 (경찰) 또는 금융회사에 신고',
-              '경찰청 사이버안전국(국번없이 182) 또는 금융감독원(국번없이 1332)에 즉시 신고하세요.',
+              '금융회사 및 금융감독원 신고',
+              '금융감독원 1332번 또는 거래 은행 고객센터로 연락해 금융 피해 차단을 요청하세요.',
               Colors.orange,
             ),
             _buildActionCard(
               '3',
-              '계좌 지급정지 요청',
-              '피해 계좌에 대한 지급정지를 요청하여 추가 피해를 막으세요.',
+              '악성 앱 설치 의심 시 인터넷 차단',
+              '휴대폰에 악성 앱이 설치되었을 수 있다면 즉시 인터넷(Wi-Fi, 데이터)을 끄세요.',
               Colors.amber,
             ),
             const SizedBox(height: 24),
 
             // 긴급 연락처
             _buildSectionTitle('📞 긴급 연락처'),
-            _buildContactCard('경찰청 사이버안전국', '182', Icons.local_police),
+            _buildContactCard('경찰청 (긴급 신고)', '112', Icons.local_police),
+            _buildContactCard('경찰청 사이버안전국', '182', Icons.shield),
             _buildContactCard('금융감독원', '1332', Icons.account_balance),
-            _buildContactCard('경찰청 (긴급)', '112', Icons.emergency),
+            const SizedBox(height: 24),
+
+            // 2차 피해 방지
+            _buildSectionTitle('🛡️ 2차 피해 방지'),
+            _buildPreventionStep('1. 증거 확보', '통화 녹음, 문자, 카카오톡 대화 내역을 캡쳐하여 보관하세요.'),
+            _buildPreventionStep('2. 거래 내역 정리', '피해 금액과 계좌 정보를 정리하세요 (경찰 신고 시 필요).'),
+            _buildPreventionStep('3. 악성 앱 완전 삭제', '휴대폰에서 의심스러운 앱을 모두 삭제하고, 필요시 초기화하세요.'),
+            const SizedBox(height: 24),
+
+            // 개인정보 유출 시 10단계 조치
+            _buildSectionTitle('🔒 개인정보 유출 시 10단계 조치'),
+            _buildInfoProtectionSection(),
             const SizedBox(height: 24),
 
             // 통화 내용
@@ -228,11 +240,12 @@ class PhishingResponseGuidePage extends StatelessWidget {
             const SizedBox(height: 24),
 
             // 보이스피싱 예방 수칙
-            _buildSectionTitle('🛡️ 보이스피싱 예방 수칙'),
-            _buildPreventionTip('공공기관은 전화로 계좌번호나 비밀번호를 요구하지 않습니다.'),
-            _buildPreventionTip('안전계좌, 보호계좌 같은 것은 존재하지 않습니다.'),
-            _buildPreventionTip('가족이나 지인을 사칭한 경우 직접 통화로 확인하세요.'),
-            _buildPreventionTip('의심스러운 전화는 끊고 해당 기관에 직접 전화하세요.'),
+            _buildSectionTitle('💡 보이스피싱 예방 수칙'),
+            _buildPreventionTip('공공기관은 전화로 계좌번호나 비밀번호를 절대 요구하지 않습니다.'),
+            _buildPreventionTip('안전계좌, 보호계좌는 존재하지 않습니다. 모두 사기입니다.'),
+            _buildPreventionTip('가족이나 지인을 사칭한 경우 반드시 직접 통화로 확인하세요.'),
+            _buildPreventionTip('의심스러운 전화는 즉시 끊고 해당 기관에 직접 전화하세요.'),
+            _buildPreventionTip('출처가 불분명한 앱은 절대 설치하지 마세요.'),
             const SizedBox(height: 40),
           ],
         ),
@@ -357,6 +370,124 @@ class PhishingResponseGuidePage extends StatelessWidget {
             child: Text(
               tip,
               style: const TextStyle(fontSize: 14, height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreventionStep(String title, String description) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: Colors.blue.shade900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade700,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoProtectionSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '긴급 대응 (피해 직후)',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.orange.shade900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildInfoProtectionItem('1', '금융사기 예방 시스템 등록'),
+          _buildInfoProtectionItem('2', '명의도용 계좌·카드·대출 조회 (어카운트인포)'),
+          _buildInfoProtectionItem('3', '명의도용 방지 서비스 신청 (엠세이퍼 등)'),
+          _buildInfoProtectionItem('4', '토스 앱 차단 요청 (1599-4905)'),
+          _buildInfoProtectionItem('5', '여신거래 안심차단 서비스 신청'),
+          _buildInfoProtectionItem('6', '소액결제·콘텐츠 이용료 차단 (통신사 114)'),
+          const SizedBox(height: 16),
+          Text(
+            '사후 조치 (신고 후)',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.orange.shade900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildInfoProtectionItem('7', '신분증 재발급 (주민등록증, 운전면허증, 여권)'),
+          _buildInfoProtectionItem('8', '공동/금융인증서 폐기 후 재발급'),
+          _buildInfoProtectionItem('9', '본인확인 내역 조회 (개인정보 보호 포털)'),
+          _buildInfoProtectionItem('10', '명의도용 조회 재확인'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoProtectionItem(String number, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.orange.shade600,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              description,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.5,
+              ),
             ),
           ),
         ],

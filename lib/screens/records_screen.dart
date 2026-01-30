@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
 import '../models/call_record.dart';
+import 'record_detail_screen.dart';
 
 class RecordsScreen extends StatefulWidget {
   const RecordsScreen({super.key});
@@ -383,9 +384,11 @@ class _RecordsScreenState extends State<RecordsScreen> {
           color: Colors.grey.shade400,
         ),
         onTap: () {
-          // TODO: 세부 정보 페이지로 이동
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('세부 정보 페이지 준비 중입니다')),
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RecordDetailScreen(record: record),
+            ),
           );
         },
       ),
