@@ -1,7 +1,9 @@
 import 'dart:async'; // StreamSubscription을 위해 필요
+import 'dart:convert'; // jsonDecode용
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http; // http 패키지 추가
 
 void main() {
   runApp(const MyApp());
@@ -36,6 +38,8 @@ class _FileListPageState extends State<FileListPage> {
 
   // 파일 시스템 변경 감지를 위한 구독 객체
   StreamSubscription<FileSystemEvent>? _dirWatcher;
+
+  final String _apiKey = 'sk-proj-YOUR_OPENAI_API_KEY_HERE';
 
   @override
   void initState() {
@@ -82,40 +86,85 @@ class _FileListPageState extends State<FileListPage> {
     final dir = Directory(_targetPath);
     if (!dir.existsSync()) return;
 
-    // 11자리 숫자 + .mp3 패턴 정의
     final targetPattern = RegExp(r'^\d{11}\.mp3$');
 
-    _dirWatcher = dir.watch(events: FileSystemEvent.create).listen((event) {
-      // event.path는 전체 경로를 반환하므로 파일명만 추출
+    _dirWatcher = dir.watch(events: FileSystemEvent.create).listen((event) async {
       final fileName = event.path.split('/').last;
 
-      // 파일 생성 이벤트(create)인 경우에만 체크
       if (event.type == FileSystemEvent.create) {
-
-        // 정규식과 매칭되는지 확인
         if (targetPattern.hasMatch(fileName)) {
-          print('★ 타겟 파일 감지됨! ★');
-          print('파일명: $fileName');
-          print('전체경로: ${event.path}');
+          print('★ 타겟 파일 감지됨: $fileName');
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('감지 성공: $fileName'),
-                backgroundColor: Colors.green, // 성공 시 녹색 스낵바
-              ),
+              const SnackBar(content: Text('변환 중입니다... 잠시만 기다려주세요.')),
             );
           }
-        } else {
-          print('일반 파일 생성됨: $fileName (타겟 아님)');
+
+          // [추가됨] 텍스트 변환 요청
+          final file = File(event.path);
+          await _transcribeAudio(file);
+
         }
       }
-
-      // UI 갱신 (리스트 업데이트)
-      if (mounted) {
-        _listFiles();
-      }
+      if (mounted) _listFiles();
     });
+  }
+
+  // [핵심 기능] OpenAI Whisper API 호출 함수
+  Future<void> _transcribeAudio(File audioFile) async {
+    final url = Uri.parse('https://api.openai.com/v1/audio/transcriptions');
+
+    try {
+      // Multipart Request 생성
+      final request = http.MultipartRequest('POST', url)
+        ..headers['Authorization'] = 'Bearer $_apiKey'
+        ..fields['model'] = 'whisper-1' // 사용할 모델
+        ..fields['language'] = 'ko';    // 한국어 지정 (선택사항)
+
+      // 파일 첨부
+      request.files.add(await http.MultipartFile.fromPath('file', audioFile.path));
+
+      print('서버로 전송 중...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        // 성공 시 응답 파싱
+        final jsonResponse = jsonDecode(utf8.decode(response.bodyBytes));
+        final text = jsonResponse['text'];
+
+        print('▼▼▼ 변환된 텍스트 ▼▼▼');
+        print(text);
+        print('▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲');
+
+        if (mounted) {
+          // 다이얼로그로 결과 보여주기
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('변환 성공'),
+              content: SingleChildScrollView(child: Text(text)),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('닫기')
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        print('에러 발생: ${response.statusCode} / ${response.body}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('변환 실패: ${response.statusCode}')),
+          );
+        }
+      }
+    } catch (e) {
+      print('네트워크 오류: $e');
+    }
   }
 
   // [수정됨] 테스트를 위해 '01012345678.mp3' 형식의 파일 생성
